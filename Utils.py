@@ -48,11 +48,17 @@ except:
 # except:
 #   mycpp = None
 
-try:
-  import mycpp.build.mycpp as mycpp
-except:
-  print("\n\n[Warning] mycpp not found or could not be imported using mycppv2\n\n")
-  import mycppv2.build.mycpp as mycpp
+# try:
+#   import mycpp.build.mycpp as mycpp
+#   print("\n\n[Info] mycpp found and imported using mycpp\n\n")
+# except Exception:
+#   try:
+#     import mycppv2.build.mycpp as mycpp
+#     print("\n\n[Info] mycpp found and imported using mycppv2\n\n")
+#   except Exception:
+#     print("\n\n[Warning] mycpp not found; using Python cluster_poses implementation.\n\n")
+#     mycpp = None
+mycpp = None
   
 try:
   from bundlesdf.mycuda import common
@@ -107,6 +113,67 @@ def set_logging_format(level=logging.INFO):
 set_logging_format()
 
 
+def rotation_geodesic_distance(R1, R2):
+  """Geodesic distance between two 3x3 rotation matrices, in radians.
+  Matches C++ Utils::rotationGeodesicDistance.
+  """
+  R1 = np.asarray(R1, dtype=np.float64)
+  R2 = np.asarray(R2, dtype=np.float64)
+  cos_val = ((R1 @ R2.T).trace() - 1.0) / 2.0
+  cos_val = np.clip(cos_val, -1.0, 1.0)
+  return float(np.arccos(cos_val))
+
+
+def cluster_poses(angle_diff_deg, dist_diff, poses_in, symmetry_tfs):
+  """Cluster 4x4 poses by rotation (under symmetry) and translation.
+  Keeps one representative per cluster. Matches mycpp cluster_poses behavior.
+
+  Args:
+    angle_diff_deg: max rotation difference in degrees to merge (geodesic).
+    dist_diff: max translation distance in meters to consider same cluster.
+    poses_in: (N, 4, 4) array of pose matrices.
+    symmetry_tfs: (S, 4, 4) array of symmetry transforms.
+
+  Returns:
+    List of 4x4 numpy arrays (clustered poses).
+  """
+  poses_in = np.asarray(poses_in, dtype=np.float64)
+  symmetry_tfs = np.asarray(symmetry_tfs, dtype=np.float64)
+  if poses_in.ndim == 2:
+    poses_in = poses_in[np.newaxis, ...]
+  if symmetry_tfs.ndim == 2:
+    symmetry_tfs = symmetry_tfs[np.newaxis, ...]
+
+  radian_thres = np.deg2rad(angle_diff_deg)
+  poses_out = [poses_in[0]]
+  n = len(poses_in)
+  logging.info(f"num original candidates = {n}")
+
+  for i in range(1, n):
+    cur_pose = poses_in[i]
+    isnew = True
+    t1 = cur_pose[:3, 3]
+
+    for cluster in poses_out:
+      t0 = cluster[:3, 3]
+      if np.linalg.norm(t0 - t1) >= dist_diff:
+        continue
+      R_cluster = cluster[:3, :3]
+      for tf in symmetry_tfs:
+        cur_pose_tmp = cur_pose @ tf
+        R_cur = cur_pose_tmp[:3, :3]
+        rot_diff = rotation_geodesic_distance(R_cur, R_cluster)
+        if rot_diff < radian_thres:
+          isnew = False
+          break
+      if not isnew:
+        break
+
+    if isnew:
+      poses_out.append(cur_pose)
+
+  logging.info(f"num of pose after clustering: {len(poses_out)}")
+  return poses_out
 
 
 def make_mesh_tensors(mesh, device='cuda', max_tex_size=None):

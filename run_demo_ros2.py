@@ -70,17 +70,40 @@ def decode_compressed_color(msg: CompressedImage) -> np.ndarray:
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
+
 def decode_compressed_depth(msg: CompressedImage, scale: float = 0.001) -> np.ndarray:
-    """Decode CompressedImage to depth in meters, shape (H, W) float64."""
-    buf = np.frombuffer(msg.data, dtype=np.uint8)
-    img = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
-    if img is None:
-        raise ValueError("Failed to decode depth CompressedImage")
-    if img.dtype == np.uint16:
-        depth = img.astype(np.float64) * scale
-    else:
-        depth = img.astype(np.float64) / 1000.0
-    return depth
+    # Skip the header (first 12 bytes)
+    # https://github.com/ros-perception/image_transport_plugins
+    depth_header_size = 12
+    raw_data = msg.data[depth_header_size:]
+
+    # Decode PNG (this is where uint16 is preserved)
+    np_arr = np.frombuffer(raw_data, np.uint8)
+    depth_img = cv2.imdecode(np_arr, cv2.IMREAD_UNCHANGED)
+
+    if depth_img is None:
+        raise RuntimeError("Failed to decode compressed depth image")
+
+    if depth_img.dtype != np.uint16:
+        raise RuntimeError(f"Expected uint16, got {depth_img.dtype}")
+
+    return depth_img * scale
+
+# def decode_compressed_depth(msg: CompressedImage, scale: float = 0.001) -> np.ndarray:
+#     """Decode CompressedImage to depth in meters, shape (H, W) float64."""
+#     # Interpret the buffer as a Y16 (16-bit, single channel) image
+#     buf = np.frombuffer(msg.data, dtype=np.uint8)
+#     print("Buf: ", buf.shape, "msg.format: ", msg.format)
+#     raise ValueError("Buf: ", buf.shape)
+#     depth = buf.reshape(msg.height, msg.width)
+#     # OpenCV expects raw bytes for imdecode, but if you want to treat as Y16, decode and enforce type.
+#     # img = cv2.imdecode(buf, cv2.IMREAD_ANYDEPTH)
+#     # if img is None:
+#     #     raise ValueError("Failed to decode depth CompressedImage")
+#     # if img.dtype != np.uint16:
+#     #     raise ValueError(f"Depth image dtype must be uint16 (Y16), got {img.dtype}")
+#     # depth = img.astype(np.float64) * scale
+#     return depth
 
 
 class FoundationPoseROS2Node(Node):
@@ -94,11 +117,11 @@ class FoundationPoseROS2Node(Node):
         self.declare_parameter("debug", 1)
         self.declare_parameter("debug_dir", "")
         self.declare_parameter("depth_scale", 0.001)
-        self.declare_parameter("color_topic", "/camera/color/image_raw/compressed")
-        self.declare_parameter("depth_topic", "/camera/depth/image_raw/compressed")
-        self.declare_parameter("camera_info_topic", "/camera/color/camera_info")
-        self.declare_parameter("pose_frame_id", "camera_color_optical_frame")
-        self.declare_parameter("slop", 0.1)
+        self.declare_parameter("color_topic", "/tiago_head_camera_down/color/image_raw/compressed")
+        self.declare_parameter("depth_topic", "/tiago_head_camera_down/depth/image_raw/compressedDepth")
+        self.declare_parameter("camera_info_topic", "/tiago_head_camera_down/color/camera_info")
+        self.declare_parameter("pose_frame_id", "tiago_head_camera_down_color_optical_frame")
+        self.declare_parameter("slop", 1.0)
 
         code_dir = os.path.dirname(os.path.realpath(__file__))
         mesh_file = self.get_parameter("mesh_file").value
@@ -153,12 +176,12 @@ class FoundationPoseROS2Node(Node):
         )
         self.get_logger().info("FoundationPose estimator initialized")
 
-        self.seg_model = None #YOLO("yolo26x-seg.pt")
+        self.seg_model = YOLO("yolo26x-seg.pt")
 
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
-            depth=2,
+            depth=15,
         )
         qos_info = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -193,10 +216,23 @@ class FoundationPoseROS2Node(Node):
         )
         self._sync = ApproximateTimeSynchronizer(
             [sub_color, sub_depth],
-            queue_size=10,
+            queue_size=100,
             slop=self.slop,
         )
         self._sync.registerCallback(self._rgbd_cb)
+        
+        self._color_sub = self.create_subscription(
+            CompressedImage,
+            self.get_parameter("color_topic").value,
+            self._color_cb,
+            qos_profile=qos_sensor,
+        )
+        self._depth_sub = self.create_subscription(
+            CompressedImage,
+            self.get_parameter("depth_topic").value,
+            self._depth_cb,
+            qos_profile=qos_sensor,
+        )
 
         self.get_logger().info(
             "Subscribed to %s and %s; waiting for camera_info and RGBD messages"
@@ -209,7 +245,14 @@ class FoundationPoseROS2Node(Node):
         self.K = np.array(msg.k, dtype=np.float64).reshape(3, 3)
         self.get_logger().info("Received camera intrinsics K")
 
+    def _depth_cb(self, depth_msg: CompressedImage):
+        print("Received depth message")
+    
+    def _color_cb(self, color_msg: CompressedImage):
+        print("Received color message")
+
     def _rgbd_cb(self, color_msg: CompressedImage, depth_msg: CompressedImage):
+        print("Received RGBD message")
         if self.K is None:
             return
         if self._lock.acquire(blocking=False):
@@ -222,8 +265,15 @@ class FoundationPoseROS2Node(Node):
             return
 
         try:
-            color = decode_compressed_color(color_msg)
-            depth = decode_compressed_depth(depth_msg, self.depth_scale)
+            if "compressed" in self.get_parameter("color_topic").value:
+                color = decode_compressed_color(color_msg)
+            else:
+                color = color_msg.data
+            if "compressed" in self.get_parameter("depth_topic").value:
+                depth = decode_compressed_depth(depth_msg, self.depth_scale)
+            else:
+                depth = depth_msg.data
+            # depth = decode_compressed_depth(depth_msg, self.depth_scale)
         except ValueError as e:
             self.get_logger().warn(str(e))
             self._lock.acquire()
@@ -241,9 +291,12 @@ class FoundationPoseROS2Node(Node):
         K = self.K.copy()
         i = self.frame_count
         self.frame_count += 1
+        
+        print("Frame count: ", i)
 
         if not self.started:
             results = self.seg_model(color)
+            print("Results: ", results)
             det_mask_list = []
             vis = cv2.cvtColor(color, cv2.COLOR_RGB2BGR).copy()
             h_vis, w_vis = vis.shape[0], vis.shape[1]
@@ -281,6 +334,10 @@ class FoundationPoseROS2Node(Node):
                     (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
                     cv2.rectangle(vis, (x1, y1 - th - 4), (x1 + tw, y1), color_bgr, -1)
                     cv2.putText(vis, label, (x1, y1 - 2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                    
+                    # save the vis image
+                    os.makedirs(f'{self.debug_dir}/vis_yolo_ros2', exist_ok=True)
+                    cv2.imwrite(f'{self.debug_dir}/vis_yolo_ros2/{i:06d}.jpg', vis[..., ::-1])
 
             chosen = None
             if det_mask_list and results and results[0].boxes is not None:
@@ -360,8 +417,13 @@ class FoundationPoseROS2Node(Node):
                 (255, 255, 255),
                 2,
             )
-            cv2.imshow("foundation_pose", vis[..., ::-1])
-            cv2.waitKey(1)
+            try:
+                cv2.imshow("foundation_pose", vis[..., ::-1])
+                cv2.waitKey(1)
+            except:
+                # write the image to a file
+                os.makedirs(f'{self.debug_dir}/track_vis_cv2_error_ros2', exist_ok=True)
+                imageio.imwrite(f'{self.debug_dir}/track_vis_cv2_error_ros2/{i:06d}.png', vis)
         if self.debug >= 2:
             vis = draw_posed_3d_box(K, img=color, ob_in_cam=pose @ np.linalg.inv(self.to_origin), bbox=self.bbox)
             vis = draw_xyz_axis(
@@ -395,7 +457,10 @@ class FoundationPoseROS2Node(Node):
         self._lock.release()
 
     def destroy_node(self):
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+        except:
+            pass
         super().destroy_node()
 
 

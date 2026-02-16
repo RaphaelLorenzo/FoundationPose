@@ -108,8 +108,13 @@ if __name__=='__main__':
       vis = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
       vis = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
       cv2.putText(vis, f"Yaw: {yaw_deg:.2f} deg, Pitch: {pitch_deg:.2f} deg, Roll: {roll_deg:.2f} deg", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)     
-      cv2.imshow('1', vis[...,::-1])
-      cv2.waitKey(30)
+      try:
+        cv2.imshow('1', vis[...,::-1])
+        cv2.waitKey(30)
+      except:
+        # write the image to a file
+        os.makedirs(f'{debug_dir}/track_vis_cv2_error', exist_ok=True)
+        imageio.imwrite(f'{debug_dir}/track_vis_cv2_error/{reader.id_strs[i]}.png', vis)
 
 
     if debug>=2:

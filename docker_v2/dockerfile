@@ -45,7 +45,11 @@ RUN pip install scipy joblib scikit-learn ruamel.yaml trimesh pyyaml opencv-pyth
 RUN cd / && git clone --recursive https://github.com/NVIDIAGameWorks/kaolin
 RUN cd /kaolin && TORCH_CUDA_ARCH_LIST="6.0;6.1;6.2;7.0;7.5;8.0;8.6;9.0" FORCE_CUDA=1 pip install -e . --no-build-isolation
 
-RUN cd / && git clone https://github.com/NVlabs/nvdiffrast && cd /nvdiffrast && TORCH_CUDA_ARCH_LIST="6.0;6.1;6.2;7.0;7.5;8.0;8.6;9.0" pip install . --no-build-isolation
+RUN python3 -m pip install --upgrade pip
+RUN pip install --upgrade setuptools
+RUN cd / && git clone https://github.com/NVlabs/nvdiffrast && cd /nvdiffrast && \
+    TORCH_CUDA_ARCH_LIST="6.0;6.1;6.2;7.0;7.5;8.0;8.6;9.0" python3 -m pip install . --no-build-isolation --no-cache-dir
+RUN python3 -c "import nvdiffrast.torch as dr; print('nvdiffrast OK')"
 
 ENV OPENCV_IO_ENABLE_OPENEXR=1
 
@@ -72,6 +76,7 @@ RUN echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/r
 RUN apt-get update && apt-get upgrade -y
 RUN apt install ros-humble-desktop-full -y
 RUN apt install ros-dev-tools -y
+RUN pip install "setuptools<81"
 RUN rosdep init && rosdep update
 
 ###### Install ROS Dependencies
@@ -94,9 +99,9 @@ RUN sysctl net.ipv4.ipfrag_high_thresh=134217728
 
 RUN echo "export FASTDDS_BUILTIN_TRANSPORTS=LARGE_DATA?max_msg_size=1MB&soets_size=1MB&non_blocking=true&tcp_negotiation_timeout=50" >> ~/.bashrc
 
-###### Source ROS2 and workspace
+###### Source ROS2 and workspace (ros2_ws only if present, e.g. mounted)
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc
-RUN echo "source /ros2_ws/install/setup.bash" >> ~/.bashrc
+RUN echo "[ -f /ros2_ws/install/setup.bash ] && source /ros2_ws/install/setup.bash" >> ~/.bashrc
 
 # Setup shell
 ENV SHELL=/bin/bash
