@@ -42,10 +42,18 @@ try:
   import kornia
 except:
   kornia = None
+  
+# try:
+#   import mycpp.build.mycpp as mycpp
+# except:
+#   mycpp = None
+
 try:
   import mycpp.build.mycpp as mycpp
 except:
-  mycpp = None
+  print("\n\n[Warning] mycpp not found or could not be imported using mycppv2\n\n")
+  import mycppv2.build.mycpp as mycpp
+  
 try:
   from bundlesdf.mycuda import common
 except:
@@ -692,6 +700,7 @@ def draw_xyz_axis(color, ob_in_cam, scale=0.1, K=np.eye(3), thickness=3, transpa
   arrow_len = 0
   tmp = color.copy()
   tmp1 = tmp.copy()
+  print(origin, xx, yy, zz)
   tmp1 = cv2.arrowedLine(tmp1, origin, xx, color=(0,0,255), thickness=thickness,line_type=line_type, tipLength=arrow_len)
   mask = np.linalg.norm(tmp1-tmp, axis=-1)>0
   tmp[mask] = tmp[mask]*transparency + tmp1[mask]*(1-transparency)
@@ -700,7 +709,7 @@ def draw_xyz_axis(color, ob_in_cam, scale=0.1, K=np.eye(3), thickness=3, transpa
   mask = np.linalg.norm(tmp1-tmp, axis=-1)>0
   tmp[mask] = tmp[mask]*transparency + tmp1[mask]*(1-transparency)
   tmp1 = tmp.copy()
-  tmp1 = cv2.arrowedLine(tmp1, origin, zz, color=(255,0,0), thickness=thickness,line_type=line_type, tipLength=arrow_len)
+  tmp1 = cv2.arrowedLine(tmp1, origin, zz, color=(255,225,0), thickness=thickness,line_type=line_type, tipLength=arrow_len)
   mask = np.linalg.norm(tmp1-tmp, axis=-1)>0
   tmp[mask] = tmp[mask]*transparency + tmp1[mask]*(1-transparency)
   tmp = tmp.astype(np.uint8)

@@ -1,10 +1,10 @@
 # PyTorch 2.1.1
---extra-index-url https://download.pytorch.org/whl/cu118
+--extra-index-url https://download.pytorch.org/whl/cu121
 # torch==2.1.1+cu118
 # torchvision==0.16.1+cu118
-torch==2.0.0+cu118
-torchvision==0.15.1+cu118
-torchaudio==2.0.1+cu118
+torch==2.1.1+cu121
+torchvision==0.16.1+cu121
+torchaudio==2.1.1+cu121
 
 
 # JupyterLab
@@ -54,7 +54,7 @@ roma==1.4.4
 seaborn==0.13.2
 pin==2.7.0
 openpyxl==3.1.2
-torchnet==0.0.4
+# torchnet==0.0.4
 wandb==0.16.5
 colorama==0.4.6
 GPUtil==1.4.0

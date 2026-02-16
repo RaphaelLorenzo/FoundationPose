@@ -49,6 +49,21 @@ if __name__=='__main__':
     depth = reader.get_depth(i)
     if i==0:
       mask = reader.get_mask(0).astype(bool)
+      
+      # print(color.shape, depth.shape, mask.shape)
+      # print(reader.K)
+      # print(color.dtype, depth.dtype, mask.dtype)
+
+      # import matplotlib.pyplot as plt
+      # plt.subplot(1,3,1)
+      # plt.imshow(color)
+      # plt.subplot(1,3,2)
+      # plt.imshow(depth)
+      # plt.colorbar()
+      # plt.subplot(1,3,3)
+      # plt.imshow(mask)
+      # plt.show()
+      
       pose = est.register(K=reader.K, rgb=color, depth=depth, ob_mask=mask, iteration=args.est_refine_iter)
 
       if debug>=3:
@@ -65,12 +80,36 @@ if __name__=='__main__':
     os.makedirs(f'{debug_dir}/ob_in_cam', exist_ok=True)
     np.savetxt(f'{debug_dir}/ob_in_cam/{reader.id_strs[i]}.txt', pose.reshape(4,4))
 
+    # Yaw, pitch, roll from pose
+    # Extract rotation matrix (3x3 upper left)
+    print(pose)
+    R = pose[:3,:3]
+    # Calculate yaw, pitch, roll (in radians)
+    # Assuming rotation order ZYX (yaw, pitch, roll)
+    import math
+    sy = math.sqrt(R[0,0] ** 2 + R[1,0] ** 2)
+    singular = sy < 1e-6
+    if not singular:
+        yaw = math.atan2(R[1,0], R[0,0])
+        pitch = math.atan2(-R[2,0], sy)
+        roll = math.atan2(R[2,1], R[2,2])
+    else:
+        yaw = math.atan2(-R[1,2], R[1,1])
+        pitch = math.atan2(-R[2,0], sy)
+        roll = 0
+    # Convert to degrees
+    yaw_deg = math.degrees(yaw)
+    pitch_deg = math.degrees(pitch)
+    roll_deg = math.degrees(roll)
+    print(f"Yaw: {yaw_deg:.2f} deg, Pitch: {pitch_deg:.2f} deg, Roll: {roll_deg:.2f} deg")
+
     if debug>=1:
       center_pose = pose@np.linalg.inv(to_origin)
       vis = draw_posed_3d_box(reader.K, img=color, ob_in_cam=center_pose, bbox=bbox)
       vis = draw_xyz_axis(color, ob_in_cam=center_pose, scale=0.1, K=reader.K, thickness=3, transparency=0, is_input_rgb=True)
+      cv2.putText(vis, f"Yaw: {yaw_deg:.2f} deg, Pitch: {pitch_deg:.2f} deg, Roll: {roll_deg:.2f} deg", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)     
       cv2.imshow('1', vis[...,::-1])
-      cv2.waitKey(1)
+      cv2.waitKey(30)
 
 
     if debug>=2:
