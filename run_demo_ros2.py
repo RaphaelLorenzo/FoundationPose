@@ -176,7 +176,7 @@ class FoundationPoseROS2Node(Node):
         )
         self.get_logger().info("FoundationPose estimator initialized")
 
-        self.seg_model = YOLO("yolo26x-seg.pt")
+        self.seg_model = YOLO("yolo26n-seg.pt")
 
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -288,7 +288,19 @@ class FoundationPoseROS2Node(Node):
                 interpolation=cv2.INTER_NEAREST,
             )
 
+        print("Color: ", color.shape, "Depth: ", depth.shape)
+        # divide size by 2
+        color = cv2.resize(color, (color.shape[1] // 2, color.shape[0] // 2))
+        depth = cv2.resize(depth, (depth.shape[1] // 2, depth.shape[0] // 2))
+        # adapt K
         K = self.K.copy()
+        
+        K[0, 0] = K[0, 0] / 2
+        K[1, 1] = K[1, 1] / 2
+        K[0, 2] = K[0, 2] / 2
+        K[1, 2] = K[1, 2] / 2
+        
+        
         i = self.frame_count
         self.frame_count += 1
         
@@ -296,7 +308,7 @@ class FoundationPoseROS2Node(Node):
 
         if not self.started:
             results = self.seg_model(color)
-            print("Results: ", results)
+            # print("Results: ", results)
             det_mask_list = []
             vis = cv2.cvtColor(color, cv2.COLOR_RGB2BGR).copy()
             h_vis, w_vis = vis.shape[0], vis.shape[1]
