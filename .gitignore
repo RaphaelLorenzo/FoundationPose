@@ -159,3 +159,5 @@ run_used.yml
 
 *.pt
 debug (copy)/
+
+*.gif

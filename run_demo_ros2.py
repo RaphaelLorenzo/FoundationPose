@@ -107,21 +107,21 @@ def decode_compressed_depth(msg: CompressedImage, scale: float = 0.001) -> np.nd
 
 
 class FoundationPoseROS2Node(Node):
-    def __init__(self):
+    def __init__(self, args=None):
         super().__init__("foundation_pose_node")
 
-        self.declare_parameter("mesh_file", "")
-        self.declare_parameter("target_object", "bottle")
-        self.declare_parameter("est_refine_iter", 5)
-        self.declare_parameter("track_refine_iter", 2)
-        self.declare_parameter("debug", 1)
-        self.declare_parameter("debug_dir", "")
-        self.declare_parameter("depth_scale", 0.001)
-        self.declare_parameter("color_topic", "/tiago_head_camera_down/color/image_raw/compressed")
-        self.declare_parameter("depth_topic", "/tiago_head_camera_down/depth/image_raw/compressedDepth")
-        self.declare_parameter("camera_info_topic", "/tiago_head_camera_down/color/camera_info")
-        self.declare_parameter("pose_frame_id", "tiago_head_camera_down_color_optical_frame")
-        self.declare_parameter("slop", 1.0)
+        self.declare_parameter("mesh_file", args.mesh_file)
+        self.declare_parameter("target_object", args.target_object)
+        self.declare_parameter("est_refine_iter", args.est_refine_iter)
+        self.declare_parameter("track_refine_iter", args.track_refine_iter)
+        self.declare_parameter("debug", args.debug)
+        self.declare_parameter("debug_dir", args.debug_dir)
+        self.declare_parameter("depth_scale", args.depth_scale)
+        self.declare_parameter("color_topic", args.color_topic)
+        self.declare_parameter("depth_topic", args.depth_topic)
+        self.declare_parameter("camera_info_topic", args.camera_info_topic)
+        self.declare_parameter("pose_frame_id", args.pose_frame_id)
+        self.declare_parameter("slop", args.slop)
 
         code_dir = os.path.dirname(os.path.realpath(__file__))
         mesh_file = self.get_parameter("mesh_file").value
@@ -176,7 +176,7 @@ class FoundationPoseROS2Node(Node):
         )
         self.get_logger().info("FoundationPose estimator initialized")
 
-        self.seg_model = YOLO("yolo26n-seg.pt")
+        self.seg_model = YOLO("yolo26n-seg.pt") # might need the last ultralytics
 
         qos_sensor = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -476,9 +476,9 @@ class FoundationPoseROS2Node(Node):
         super().destroy_node()
 
 
-def main(args=None):
-    rclpy.init(args=args)
-    node = FoundationPoseROS2Node()
+def main(args):
+    rclpy.init()
+    node = FoundationPoseROS2Node(args)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
@@ -489,4 +489,18 @@ def main(args=None):
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mesh_file", type=str, default="", help="Path to object mesh file (e.g. ref_mesh.obj). Empty = use demo_data/bottle.")
+    parser.add_argument("--target_object", type=str, default="bottle", help="Target object class name for YOLO (e.g. bottle, cup).")
+    parser.add_argument("--est_refine_iter", type=int, default=5, help="Number of refinement iterations for registration.")
+    parser.add_argument("--track_refine_iter", type=int, default=2, help="Number of refinement iterations for tracking.")
+    parser.add_argument("--debug", type=int, default=1, help="Debug level.")
+    parser.add_argument("--debug_dir", type=str, default="", help="Debug directory.")
+    parser.add_argument("--depth_scale", type=float, default=0.001, help="Depth scale.")
+    parser.add_argument("--color_topic", type=str, default="/tiago_head_camera_down/color/image_raw/compressed", help="Color topic.")
+    parser.add_argument("--depth_topic", type=str, default="/tiago_head_camera_down/depth/image_raw/compressedDepth", help="Depth topic.")
+    parser.add_argument("--camera_info_topic", type=str, default="/tiago_head_camera_down/color/camera_info", help="Camera info topic.")
+    parser.add_argument("--pose_frame_id", type=str, default="tiago_head_camera_down_color_optical_frame", help="Pose frame id.")
+    parser.add_argument("--slop", type=float, default=1.0, help="Slop.")
+    args = parser.parse_args()
+    main(args)
