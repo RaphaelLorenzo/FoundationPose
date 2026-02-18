@@ -107,7 +107,7 @@ def decode_compressed_depth(msg: CompressedImage, scale: float = 0.001) -> np.nd
 
 
 class FoundationPoseROS2Node(Node):
-    def __init__(self, args=None):
+    def __init__(self, args):
         super().__init__("foundation_pose_node")
 
         self.declare_parameter("mesh_file", args.mesh_file)

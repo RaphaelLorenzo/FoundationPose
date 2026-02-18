@@ -135,7 +135,7 @@ class PoseRefinePredictor:
     self.model = RefineNet(cfg=self.cfg, c_in=self.cfg['c_in']).cuda()
 
     logging.info(f"Using pretrained model from {ckpt_dir}")
-    ckpt = torch.load(ckpt_dir)
+    ckpt = torch.load(ckpt_dir, weights_only=False)
     if 'model' in ckpt:
       ckpt = ckpt['model']
     self.model.load_state_dict(ckpt)
